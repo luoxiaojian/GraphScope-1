@@ -16,10 +16,16 @@
 #ifndef GRAPHSCOPE_FLEX_STORAGES_RT_MUTABLE_GRAPH_CSR_MUTABLE_CSR_H_
 #define GRAPHSCOPE_FLEX_STORAGES_RT_MUTABLE_GRAPH_CSR_MUTABLE_CSR_H_
 
+#include <atomic>
+#include <thread>
+#include <vector>
+
 #include "flex/storages/rt_mutable_graph/csr/adj_list.h"
 #include "flex/storages/rt_mutable_graph/csr/csr_base.h"
 #include "flex/storages/rt_mutable_graph/csr/nbr.h"
 #include "flex/storages/rt_mutable_graph/types.h"
+
+#include "grape/utils/concurrent_queue.h"
 
 namespace gs {
 
@@ -253,9 +259,7 @@ class MutableCsr : public TypedMutableCsrBase<EDATA_T> {
   slice_t get_edges(vid_t i) const override {
     return adj_lists_[i].get_edges();
   }
-  mut_slice_t get_edges_mut(vid_t i) override {
-    return adj_lists_[i].get_edges_mut();
-  }
+  mut_slice_t get_edges_mut(vid_t i) { return adj_lists_[i].get_edges_mut(); }
 
   void ingest_edge(vid_t src, vid_t dst, grape::OutArchive& arc, timestamp_t ts,
                    Allocator& alloc) override {

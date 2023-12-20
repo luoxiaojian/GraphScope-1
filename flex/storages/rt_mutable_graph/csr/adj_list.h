@@ -19,6 +19,7 @@
 #include <atomic>
 
 #include "flex/storages/rt_mutable_graph/csr/nbr.h"
+#include "flex/utils/allocators.h"
 
 namespace gs {
 

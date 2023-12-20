@@ -86,7 +86,7 @@ class ImmutableCsr : public TypedMutableCsrBase<EDATA_T> {
     if (!degree_list_.filename().empty() &&
         std::filesystem::exists(degree_list_.filename())) {
       std::filesystem::create_hard_link(degree_list_.filename(),
-                                        new_spanshot_dir + "/" + name + ".deg");
+                                        new_snapshot_dir + "/" + name + ".deg");
     } else {
       FILE* fp = fopen((new_snapshot_dir + "/" + name + ".deg").c_str(), "wb");
       fwrite(degree_list_.data(), sizeof(int), vnum, fp);
@@ -112,7 +112,7 @@ class ImmutableCsr : public TypedMutableCsrBase<EDATA_T> {
     }
     if (reuse_nbr_list_file) {
       std::filesystem::create_hard_link(nbr_list_.filename(),
-                                        new_spanshot_dir + "/" + name + ".nbr");
+                                        new_snapshot_dir + "/" + name + ".nbr");
     } else {
       FILE* fp = fopen((new_snapshot_dir + "/" + name + ".nbr").c_str(), "wb");
       for (size_t i = 0; i < vnum; ++i) {
@@ -150,11 +150,6 @@ class ImmutableCsr : public TypedMutableCsrBase<EDATA_T> {
   MutableNbrSlice<EDATA_T> get_edges(vid_t i) const override {
     LOG(FATAL) << "not support";
     return MutableNbrSlice<EDATA_T>::empty();
-  }
-
-  MutableNbrSliceMut<EDATA_T> get_edges_mut(vid_t i) override {
-    LOG(FATAL) << "not support";
-    return MutableNbrSliceMut<EDATA_T>::empty();
   }
 
   void ingest_edge(vid_t src, vid_t dst, grape::OutArchive& arc, timestamp_t ts,

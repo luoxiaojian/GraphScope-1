@@ -19,7 +19,7 @@
 #include <limits>
 #include <utility>
 
-#include "flex/storages/rt_mutable_graph/mutable_csr.h"
+#include "flex/storages/rt_mutable_graph/csr/mutable_csr.h"
 #include "flex/storages/rt_mutable_graph/mutable_property_fragment.h"
 #include "flex/storages/rt_mutable_graph/types.h"
 
