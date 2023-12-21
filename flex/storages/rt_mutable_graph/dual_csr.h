@@ -72,7 +72,7 @@ class DualCsr : public DualCsrBase {
       if (mut) {
         in_csr_ = new SingleMutableCsr<EDATA_T>();
       } else {
-        in_csr_ = new ImmutableCsr<EDATA_T>();
+        in_csr_ = new SingleImmutableCsr<EDATA_T>();
       }
     }
     if (oe_strategy == EdgeStrategy::kNone) {
@@ -87,7 +87,7 @@ class DualCsr : public DualCsrBase {
       if (mut) {
         out_csr_ = new SingleMutableCsr<EDATA_T>();
       } else {
-        out_csr_ = new ImmutableCsr<EDATA_T>();
+        out_csr_ = new SingleImmutableCsr<EDATA_T>();
       }
     }
   }

@@ -130,7 +130,7 @@ class ImmutableCsr : public TypedMutableCsrBase<EDATA_T> {
 
   void batch_put_edge(vid_t src, vid_t dst, const EDATA_T& data,
                       timestamp_t ts = 0) override {
-    auto& nbr = adj_lists_[src][degree_list_[dst]++];
+    auto& nbr = adj_lists_[src][degree_list_[src]++];
     nbr.neighbor = dst;
     nbr.data = data;
   }
@@ -144,8 +144,6 @@ class ImmutableCsr : public TypedMutableCsrBase<EDATA_T> {
                 Allocator& alloc) override {
     LOG(FATAL) << "not support";
   }
-
-  int degree(vid_t i) const { return degree_list_[i]; }
 
   MutableNbrSlice<EDATA_T> get_edges(vid_t i) const override {
     LOG(FATAL) << "not support";
@@ -177,9 +175,125 @@ class ImmutableCsr : public TypedMutableCsrBase<EDATA_T> {
     return nullptr;
   }
 
+  const nbr_t* get_edges_begin(vid_t v) const override { return adj_lists_[v]; }
+  const nbr_t* get_edges_end(vid_t v) const override {
+    return adj_lists_[v] + degree_list_[v];
+  }
+
  private:
   mmap_array<nbr_t*> adj_lists_;
   mmap_array<int> degree_list_;
+  mmap_array<nbr_t> nbr_list_;
+};
+
+template <typename EDATA_T>
+class SingleImmutableCsr : public TypedMutableCsrBase<EDATA_T> {
+ public:
+  using nbr_t = ImmutableNbr<EDATA_T>;
+
+  SingleImmutableCsr() = default;
+  ~SingleImmutableCsr() = default;
+
+  size_t batch_init(const std::string& name, const std::string& work_dir,
+                    const std::vector<int>& degree) override {
+    size_t vnum = degree.size();
+    nbr_list_.open(work_dir + "/" + name + ".snbr", false);
+    nbr_list_.resize(vnum);
+
+    for (size_t k = 0; k != vnum; ++k) {
+      nbr_list_[k].neighbor = std::numeric_limits<vid_t>::max();
+    }
+
+    return vnum;
+  }
+
+  void open(const std::string& name, const std::string& snapshot_dir,
+            const std::string& work_dir) override {
+    if (!std::filesystem::exists(work_dir + "/" + name + ".snbr")) {
+      copy_file(snapshot_dir + "/" + name + ".snbr",
+                work_dir + "/" + name + ".snbr");
+    }
+    nbr_list_.open(work_dir + "/" + name + ".snbr", false);
+  }
+
+  void warmup(int thread_num) const override {}
+
+  void dump(const std::string& name,
+            const std::string& new_snapshot_dir) override {
+    assert(!nbr_list_.filename().empty() &&
+           std::filesystem::exists(nbr_list_.filename()));
+    assert(!nbr_list_.read_only());
+    std::filesystem::create_hard_link(nbr_list_.filename(),
+                                      new_snapshot_dir + "/" + name + ".snbr");
+  }
+
+  void resize(vid_t vnum) override { LOG(FATAL) << "not support"; }
+
+  size_t size() const override { return nbr_list_.size(); }
+
+  void batch_put_edge(vid_t src, vid_t dst, const EDATA_T& data,
+                      timestamp_t ts = 0) override {
+    auto& nbr = nbr_list_[src];
+    CHECK_EQ(nbr.neighbor, std::numeric_limits<vid_t>::max());
+    nbr.neighbor = dst;
+    nbr.data = data;
+  }
+
+  void put_generic_edge(vid_t src, vid_t dst, const Any& data, timestamp_t ts,
+                        Allocator& alloc) override {
+    LOG(FATAL) << "not support";
+  }
+
+  void put_edge(vid_t src, vid_t dst, const EDATA_T& data, timestamp_t ts,
+                Allocator& alloc) override {
+    LOG(FATAL) << "not support";
+  }
+
+  MutableNbrSlice<EDATA_T> get_edges(vid_t i) const override {
+    LOG(FATAL) << "not support";
+    return MutableNbrSlice<EDATA_T>::empty();
+  }
+
+  const nbr_t& get_edge(vid_t i) const {
+    if (i >= nbr_list_.size()) {
+      LOG(FATAL) << "i = " << i << ", size = " << nbr_list_.size();
+    }
+    return nbr_list_[i];
+  }
+
+  void ingest_edge(vid_t src, vid_t dst, grape::OutArchive& arc, timestamp_t ts,
+                   Allocator& alloc) override {
+    LOG(FATAL) << "not support";
+  }
+
+  void peek_ingest_edge(vid_t src, vid_t dst, grape::OutArchive& arc,
+                        timestamp_t ts, Allocator& alloc) override {
+    LOG(FATAL) << "not support";
+  }
+
+  std::shared_ptr<MutableCsrConstEdgeIterBase> edge_iter(
+      vid_t v) const override {
+    LOG(FATAL) << "not support";
+    return nullptr;
+  }
+
+  MutableCsrConstEdgeIterBase* edge_iter_raw(vid_t v) const override {
+    LOG(FATAL) << "not support";
+    return nullptr;
+  }
+  std::shared_ptr<MutableCsrEdgeIterBase> edge_iter_mut(vid_t v) override {
+    LOG(FATAL) << "not support";
+    return nullptr;
+  }
+
+  const nbr_t* get_edges_begin(vid_t v) const override { return &nbr_list_[v]; }
+  const nbr_t* get_edges_end(vid_t v) const override {
+    return nbr_list_[v].neighbor == std::numeric_limits<vid_t>::max()
+               ? &nbr_list_[v]
+               : (&nbr_list_[v] + 1);
+  }
+
+ private:
   mmap_array<nbr_t> nbr_list_;
 };
 

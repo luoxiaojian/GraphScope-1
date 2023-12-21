@@ -196,11 +196,15 @@ template <typename EDATA_T>
 class TypedMutableCsrBase : public MutableCsrBase {
  public:
   using slice_t = MutableNbrSlice<EDATA_T>;
+  using immutable_nbr_t = ImmutableNbr<EDATA_T>;
   virtual void batch_put_edge(vid_t src, vid_t dst, const EDATA_T& data,
                               timestamp_t ts = 0) = 0;
   virtual void put_edge(vid_t src, vid_t dst, const EDATA_T& data,
                         timestamp_t ts, Allocator& alloc) = 0;
   virtual slice_t get_edges(vid_t i) const = 0;
+
+  virtual const immutable_nbr_t* get_edges_begin(vid_t v) const { return NULL; }
+  virtual const immutable_nbr_t* get_edges_end(vid_t v) const { return NULL; }
 };
 
 template <>
