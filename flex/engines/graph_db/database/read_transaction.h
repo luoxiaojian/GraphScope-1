@@ -206,12 +206,10 @@ class SingleGraphView {
       : csr_(csr), timestamp_(timestamp) {}
 
   bool exist(vid_t v) const {
-    return (csr_.get_edge(v).timestamp.load() <= timestamp_);
+    return (csr_.get_edge(v).neighbor != std::numeric_limits<vid_t>::max());
   }
 
-  const MutableNbr<EDATA_T>& get_edge(vid_t v) const {
-    return csr_.get_edge(v);
-  }
+  const Nbr<EDATA_T>& get_edge(vid_t v) const { return csr_.get_edge(v); }
 
  private:
   const SingleMutableCsr<EDATA_T>& csr_;
@@ -300,7 +298,7 @@ class ReadTransaction {
   AdjListView<EDATA_T> GetOutgoingEdges(label_t v_label, vid_t v,
                                         label_t neighbor_label,
                                         label_t edge_label) const {
-    auto csr = dynamic_cast<const TypedMutableCsrBase<EDATA_T>*>(
+    auto csr = dynamic_cast<const MutableCsr<EDATA_T>*>(
         graph_.get_oe_csr(v_label, neighbor_label, edge_label));
     return AdjListView<EDATA_T>(csr->get_edges(v), timestamp_);
   }
@@ -309,9 +307,27 @@ class ReadTransaction {
   AdjListView<EDATA_T> GetIncomingEdges(label_t v_label, vid_t v,
                                         label_t neighbor_label,
                                         label_t edge_label) const {
-    auto csr = dynamic_cast<const TypedMutableCsrBase<EDATA_T>*>(
+    auto csr = dynamic_cast<const MutableCsr<EDATA_T>*>(
         graph_.get_ie_csr(v_label, neighbor_label, edge_label));
     return AdjListView<EDATA_T>(csr->get_edges(v), timestamp_);
+  }
+
+  template <typename EDATA_T>
+  const Nbr<EDATA_T>& GetSingleOutgoingEdge(label_t v_label, vid_t v,
+                                            label_t neighbor_label,
+                                            label_t edge_label) const {
+    auto csr = dynamic_cast<const SingleMutableCsr<EDATA_T>*>(
+        graph_.get_oe_csr(v_label, neighbor_label, edge_label));
+    return csr->get_edge(v);
+  }
+
+  template <typename EDATA_T>
+  const Nbr<EDATA_T> GetSingleIncomingEdge(label_t v_label, vid_t v,
+                                           label_t neighbor_label,
+                                           label_t edge_label) const {
+    auto csr = dynamic_cast<const SingleMutableCsr<EDATA_T>*>(
+        graph_.get_ie_csr(v_label, neighbor_label, edge_label));
+    return csr->get_edge(v);
   }
 
   const Schema& schema() const;

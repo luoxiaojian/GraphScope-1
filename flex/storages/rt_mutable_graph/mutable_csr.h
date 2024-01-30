@@ -35,6 +35,51 @@
 namespace gs {
 
 template <typename EDATA_T>
+struct __attribute__((packed)) Nbr {
+  Nbr() = default;
+  Nbr(const Nbr& rhs) : neighbor(rhs.neighbor), data(rhs.data) {}
+  ~Nbr() = default;
+
+  Nbr& operator=(const Nbr& rhs) {
+    neighbor = rhs.neighbor;
+    data = rhs.data;
+    return *this;
+  }
+
+  const EDATA_T& get_data() const { return data; }
+  vid_t get_neighbor() const { return neighbor; }
+
+  void set_data(const EDATA_T& val) { data = val; }
+  void set_neighbor(vid_t neighbor) { this->neighbor = neighbor; }
+
+  bool exists() const { return neighbor != std::numeric_limits<vid_t>::max(); }
+
+  vid_t neighbor;
+  EDATA_T data;
+};
+
+template <>
+struct Nbr<grape::EmptyType> {
+  Nbr() = default;
+  Nbr(const Nbr& rhs) : neighbor(rhs.neighbor) {}
+  ~Nbr() = default;
+
+  Nbr& operator=(const Nbr& rhs) {
+    neighbor = rhs.neighbor;
+    return *this;
+  }
+
+  void set_data(const grape::EmptyType&) {}
+  void set_neighbor(vid_t neighbor) { this->neighbor = neighbor; }
+  const grape::EmptyType& get_data() const { return data; }
+  vid_t get_neighbor() const { return neighbor; }
+  union {
+    vid_t neighbor;
+    grape::EmptyType data;
+  };
+};
+
+template <typename EDATA_T>
 struct MutableNbr {
   MutableNbr() = default;
   MutableNbr(const MutableNbr& rhs)
@@ -92,6 +137,190 @@ struct MutableNbr<grape::EmptyType> {
     std::atomic<timestamp_t> timestamp;
     grape::EmptyType data;
   };
+};
+
+template <typename EDATA_T>
+class NbrSlice {
+ public:
+  using const_nbr_t = const Nbr<EDATA_T>;
+  using const_nbr_ptr_t = const Nbr<EDATA_T>*;
+  NbrSlice() = default;
+  NbrSlice(const NbrSlice& rhs) : ptr_(rhs.ptr_), size_(rhs.size_) {}
+  ~NbrSlice() = default;
+
+  void set_size(int size) { size_ = size; }
+  int size() const { return size_; }
+
+  void set_begin(const_nbr_ptr_t ptr) { ptr_ = ptr; }
+
+  const_nbr_ptr_t begin() const { return ptr_; }
+  const_nbr_ptr_t end() const { return ptr_ + size_; }
+
+  static NbrSlice empty() {
+    NbrSlice ret;
+    ret.set_begin(nullptr);
+    ret.set_size(0);
+    return ret;
+  }
+
+ private:
+  const_nbr_ptr_t ptr_;
+  int size_;
+};
+
+template <>
+class NbrSlice<std::string_view> {
+ public:
+  struct ColumnNbr {
+    using const_nbr_t = const Nbr<size_t>;
+    using const_nbr_ptr_t = const Nbr<size_t>*;
+
+    ColumnNbr(const_nbr_ptr_t ptr, const StringColumn& column)
+        : ptr_(ptr), column_(column) {}
+    vid_t get_neighbor() const { return ptr_->neighbor; }
+    std::string_view get_data() const { return column_.get_view(ptr_->data); }
+
+    const ColumnNbr& operator*() const { return *this; }
+    const ColumnNbr* operator->() const { return this; }
+    const ColumnNbr& operator=(const ColumnNbr& nbr) const {
+      ptr_ = nbr.ptr_;
+      return *this;
+    }
+    bool operator==(const ColumnNbr& nbr) const { return ptr_ == nbr.ptr_; }
+    bool operator!=(const ColumnNbr& nbr) const { return ptr_ != nbr.ptr_; }
+    const ColumnNbr& operator++() const {
+      ++ptr_;
+      return *this;
+    }
+
+    const ColumnNbr& operator+=(size_t n) const {
+      ptr_ += n;
+      return *this;
+    }
+
+    size_t operator-(const ColumnNbr& nbr) const { return ptr_ - nbr.ptr_; }
+
+    bool operator<(const ColumnNbr& nbr) const { return ptr_ < nbr.ptr_; }
+
+    mutable const_nbr_ptr_t ptr_;
+    const StringColumn& column_;
+  };
+  using const_nbr_t = const ColumnNbr;
+  using const_nbr_ptr_t = const ColumnNbr;
+  NbrSlice(const StringColumn& column) : slice_(), column_(column) {}
+  NbrSlice(const NbrSlice& rhs) : slice_(rhs.slice_), column_(rhs.column_) {}
+  ~NbrSlice() = default;
+  void set_size(int size) { slice_.set_size(size); }
+  int size() const { return slice_.size(); }
+
+  void set_begin(const Nbr<size_t>* ptr) { slice_.set_begin(ptr); }
+
+  const ColumnNbr begin() const { return ColumnNbr(slice_.begin(), column_); }
+  const ColumnNbr end() const { return ColumnNbr(slice_.end(), column_); }
+
+  static NbrSlice empty(const StringColumn& column) {
+    NbrSlice ret(column);
+    ret.set_begin(nullptr);
+    ret.set_size(0);
+    return ret;
+  }
+
+ private:
+  NbrSlice<size_t> slice_;
+  const StringColumn& column_;
+};
+
+template <typename EDATA_T>
+class NbrSliceMut {
+ public:
+  using nbr_t = Nbr<EDATA_T>;
+  using nbr_ptr_t = Nbr<EDATA_T>*;
+  NbrSliceMut() = default;
+  ~NbrSliceMut() = default;
+
+  void set_size(int size) { size_ = size; }
+  int size() const { return size_; }
+
+  void set_begin(nbr_t* ptr) { ptr_ = ptr; }
+
+  nbr_t* begin() { return ptr_; }
+  nbr_t* end() { return ptr_ + size_; }
+
+  static NbrSliceMut empty() {
+    NbrSliceMut ret;
+    ret.set_begin(nullptr);
+    ret.set_size(0);
+    return ret;
+  }
+
+ private:
+  nbr_t* ptr_;
+  int size_;
+};
+
+template <>
+class NbrSliceMut<std::string_view> {
+ public:
+  struct ColumnNbr {
+    using nbr_t = Nbr<size_t>;
+
+    ColumnNbr(nbr_t* ptr, StringColumn& column) : ptr_(ptr), column_(column) {}
+    vid_t neighbor() const { return ptr_->neighbor; }
+    std::string_view data() { return column_.get_view(ptr_->data); }
+    vid_t get_neighbor() const { return ptr_->neighbor; }
+    const std::string_view get_data() const {
+      return column_.get_view(ptr_->data);
+    }
+    size_t get_index() const { return ptr_->data; }
+    void set_data(const std::string_view& sw, timestamp_t ts) {
+      column_.set_value(ptr_->data, sw);
+    }
+    void set_neighbor(vid_t neighbor) { ptr_->neighbor = neighbor; }
+
+    const ColumnNbr& operator*() const { return *this; }
+    ColumnNbr& operator*() { return *this; }
+    ColumnNbr& operator=(const ColumnNbr& nbr) {
+      ptr_ = nbr.ptr_;
+      return *this;
+    }
+    bool operator==(const ColumnNbr& nbr) const { return ptr_ == nbr.ptr_; }
+    bool operator!=(const ColumnNbr& nbr) const { return ptr_ != nbr.ptr_; }
+
+    ColumnNbr& operator++() {
+      ptr_++;
+      return *this;
+    }
+    ColumnNbr& operator+=(size_t n) {
+      ptr_ += n;
+      return *this;
+    }
+
+    bool operator<(const ColumnNbr& nbr) { return ptr_ < nbr.ptr_; }
+    nbr_t* ptr_;
+    StringColumn & column_;
+  };
+  using nbr_ptr_t = ColumnNbr;
+
+  NbrSliceMut(StringColumn& column) : column_(column) {}
+  ~NbrSliceMut() = default;
+  void set_size(int size) { slice_.set_size(size); }
+  int size() const { return slice_.size(); }
+
+  void set_begin(Nbr<size_t>* ptr) { slice_.set_begin(ptr); }
+
+  ColumnNbr begin() { return ColumnNbr(slice_.begin(), column_); }
+  ColumnNbr end() { return ColumnNbr(slice_.end(), column_); }
+
+  static NbrSliceMut empty(StringColumn& column) {
+    NbrSliceMut ret(column);
+    ret.set_begin(nullptr);
+    ret.set_size(0);
+    return ret;
+  }
+
+ private:
+  NbrSliceMut<size_t> slice_;
+  StringColumn& column_;
 };
 
 template <typename EDATA_T>
@@ -531,6 +760,121 @@ class MutableCsrBase {
 };
 
 template <typename EDATA_T>
+class TypedCsrConstEdgeIter : public MutableCsrConstEdgeIterBase {
+  using const_nbr_ptr_t = typename NbrSlice<EDATA_T>::const_nbr_ptr_t;
+
+ public:
+  explicit TypedCsrConstEdgeIter(const NbrSlice<EDATA_T>& slice)
+      : cur_(slice.begin()), end_(slice.end()) {}
+  ~TypedCsrConstEdgeIter() = default;
+
+  vid_t get_neighbor() const override { return (*cur_).get_neighbor(); }
+  Any get_data() const override {
+    return AnyConverter<EDATA_T>::to_any((*cur_).get_data());
+  }
+  timestamp_t get_timestamp() const override {
+    return get_neighbor() == std::numeric_limits<vid_t>::max()
+               ? std::numeric_limits<timestamp_t>::max()
+               : 0;
+  }
+
+  void next() override { ++cur_; }
+  TypedCsrConstEdgeIter& operator+=(size_t offset) override {
+    cur_ += offset;
+    if (!(cur_ < end_)) {
+      cur_ = end_;
+    }
+    return *this;
+  }
+  bool is_valid() const override { return cur_ != end_; }
+  size_t size() const override { return end_ - cur_; }
+
+ private:
+  const_nbr_ptr_t cur_;
+  const_nbr_ptr_t end_;
+};
+
+template <typename EDATA_T>
+class TypedCsrEdgeIter : public MutableCsrEdgeIterBase {
+  using nbr_t = Nbr<EDATA_T>;
+
+ public:
+  explicit TypedCsrEdgeIter(NbrSliceMut<EDATA_T> slice)
+      : cur_(slice.begin()), end_(slice.end()) {}
+  ~TypedCsrEdgeIter() = default;
+
+  vid_t get_neighbor() const override { return cur_->neighbor; }
+  Any get_data() const override {
+    return AnyConverter<EDATA_T>::to_any(cur_->data);
+  }
+  timestamp_t get_timestamp() const override {
+    return get_neighbor() == std::numeric_limits<vid_t>::max()
+               ? std::numeric_limits<timestamp_t>::max()
+               : 0;
+  }
+
+  void set_data(const Any& value, timestamp_t ts) override {
+    ConvertAny<EDATA_T>::to(value, cur_->data);
+  }
+
+  MutableCsrEdgeIterBase& operator+=(size_t offset) override {
+    if (cur_ + offset >= end_) {
+      cur_ = end_;
+    } else {
+      cur_ += offset;
+    }
+    return *this;
+  }
+
+  void next() override { ++cur_; }
+  bool is_valid() const override { return cur_ != end_; }
+
+ private:
+  nbr_t* cur_;
+  nbr_t* end_;
+};
+
+template <>
+class TypedCsrEdgeIter<std::string_view> : public MutableCsrEdgeIterBase {
+  using nbr_ptr_t = typename NbrSliceMut<std::string_view>::nbr_ptr_t;
+
+ public:
+  explicit TypedCsrEdgeIter(NbrSliceMut<std::string_view> slice)
+      : cur_(slice.begin()), end_(slice.end()) {}
+  ~TypedCsrEdgeIter() = default;
+
+  vid_t get_neighbor() const override { return cur_.get_neighbor(); }
+  Any get_data() const override {
+    return AnyConverter<std::string_view>::to_any(cur_.get_data());
+  }
+  timestamp_t get_timestamp() const override {
+    return cur_.get_neighbor() == std::numeric_limits<vid_t>::max()
+               ? std::numeric_limits<timestamp_t>::max()
+               : 0;
+  }
+
+  void set_data(const Any& value, timestamp_t ts) override {
+    cur_.set_data(value.AsStringView(), ts);
+  }
+  size_t get_index() const { return cur_.get_index(); }
+
+  MutableCsrEdgeIterBase& operator+=(size_t offset) override {
+    cur_ += offset;
+    if (!(cur_ < end_)) {
+      cur_ = end_;
+    }
+    return *this;
+  }
+
+  void next() override { ++cur_; }
+  bool is_valid() const override { return cur_ != end_; }
+
+ private:
+  nbr_ptr_t cur_;
+  nbr_ptr_t end_;
+};
+
+template <typename EDATA_T>
 class TypedMutableCsrConstEdgeIter : public MutableCsrConstEdgeIterBase {
   using const_nbr_ptr_t = typename MutableNbrSlice<EDATA_T>::const_nbr_ptr_t;
 
@@ -644,14 +988,12 @@ class TypedMutableCsrBase : public MutableCsrBase {
                               timestamp_t ts = 0) = 0;
   virtual void put_edge(vid_t src, vid_t dst, const EDATA_T& data,
                         timestamp_t ts, Allocator& alloc) = 0;
-  virtual slice_t get_edges(vid_t i) const = 0;
 };
 
 template <>
 class TypedMutableCsrBase<std::string_view> : public MutableCsrBase {
  public:
   using slice_t = MutableNbrSlice<std::string_view>;
-  virtual slice_t get_edges(vid_t i) const = 0;
   virtual void batch_put_edge_with_index(vid_t src, vid_t dst,
                                          const size_t& data,
                                          timestamp_t ts = 0) = 0;
@@ -926,9 +1268,7 @@ class MutableCsr : public TypedMutableCsrBase<EDATA_T> {
 
   int degree(vid_t i) const { return adj_lists_[i].size(); }
 
-  slice_t get_edges(vid_t i) const override {
-    return adj_lists_[i].get_edges();
-  }
+  slice_t get_edges(vid_t i) const { return adj_lists_[i].get_edges(); }
   mut_slice_t get_edges_mut(vid_t i) { return adj_lists_[i].get_edges_mut(); }
 
   void ingest_edge(vid_t src, vid_t dst, grape::OutArchive& arc, timestamp_t ts,
@@ -1188,9 +1528,7 @@ class MutableCsr<std::string_view>
 
   int degree(vid_t i) const { return adj_lists_[i].size(); }
 
-  slice_t get_edges(vid_t i) const override {
-    return adj_lists_[i].get_edges(column_);
-  }
+  slice_t get_edges(vid_t i) const { return adj_lists_[i].get_edges(column_); }
   mut_slice_t get_edges_mut(vid_t i) {
     return adj_lists_[i].get_edges_mut(column_);
   }
@@ -1235,9 +1573,9 @@ class MutableCsr<std::string_view>
 template <typename EDATA_T>
 class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
  public:
-  using nbr_t = MutableNbr<EDATA_T>;
-  using slice_t = MutableNbrSlice<EDATA_T>;
-  using mut_slice_t = MutableNbrSliceMut<EDATA_T>;
+  using nbr_t = Nbr<EDATA_T>;
+  using slice_t = NbrSlice<EDATA_T>;
+  using mut_slice_t = NbrSliceMut<EDATA_T>;
 
   SingleMutableCsr() {}
   ~SingleMutableCsr() {}
@@ -1249,7 +1587,7 @@ class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
     nbr_list_.open(work_dir + "/" + name + ".snbr", true);
     nbr_list_.resize(vnum);
     for (size_t k = 0; k != vnum; ++k) {
-      nbr_list_[k].timestamp.store(std::numeric_limits<timestamp_t>::max());
+      nbr_list_[k].neighbor = std::numeric_limits<vid_t>::max();
     }
     return vnum;
   }
@@ -1273,7 +1611,7 @@ class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
       CHECK_EQ(fread(nbr_list_.data(), sizeof(nbr_t), old_size, fin), old_size);
       fclose(fin);
       for (size_t k = old_size; k != v_cap; ++k) {
-        nbr_list_[k].timestamp.store(std::numeric_limits<timestamp_t>::max());
+        nbr_list_[k].neighbor = std::numeric_limits<vid_t>::max();
       }
     }
   }
@@ -1284,7 +1622,7 @@ class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
     if (old_size < v_cap) {
       nbr_list_.resize(v_cap);
       for (size_t k = old_size; k != v_cap; ++k) {
-        nbr_list_[k].timestamp.store(std::numeric_limits<timestamp_t>::max());
+        nbr_list_[k].neighbor = std::numeric_limits<vid_t>::max();
       }
     }
   }
@@ -1302,7 +1640,7 @@ class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
       size_t old_size = nbr_list_.size();
       nbr_list_.resize(vnum);
       for (size_t k = old_size; k != vnum; ++k) {
-        nbr_list_[k].timestamp.store(std::numeric_limits<timestamp_t>::max());
+        nbr_list_[k].neighbor = std::numeric_limits<vid_t>::max();
       }
     } else {
       nbr_list_.resize(vnum);
@@ -1313,11 +1651,9 @@ class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
 
   void batch_put_edge(vid_t src, vid_t dst, const EDATA_T& data,
                       timestamp_t ts = 0) override {
+    CHECK_EQ(nbr_list_[src].neighbor, std::numeric_limits<vid_t>::max());
     nbr_list_[src].neighbor = dst;
     nbr_list_[src].data = data;
-    CHECK_EQ(nbr_list_[src].timestamp.load(),
-             std::numeric_limits<timestamp_t>::max());
-    nbr_list_[src].timestamp.store(ts);
   }
 
   void put_generic_edge(vid_t src, vid_t dst, const Any& data, timestamp_t ts,
@@ -1330,18 +1666,15 @@ class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
   void put_edge(vid_t src, vid_t dst, const EDATA_T& data, timestamp_t ts,
                 Allocator&) override {
     CHECK_LT(src, nbr_list_.size());
+    CHECK_EQ(nbr_list_[src].neighbor, std::numeric_limits<vid_t>::max());
     nbr_list_[src].neighbor = dst;
     nbr_list_[src].data = data;
-    CHECK_EQ(nbr_list_[src].timestamp, std::numeric_limits<timestamp_t>::max());
-    nbr_list_[src].timestamp.store(ts);
   }
 
-  slice_t get_edges(vid_t i) const override {
+  slice_t get_edges(vid_t i) const {
     slice_t ret;
-    ret.set_size(nbr_list_[i].timestamp.load() ==
-                         std::numeric_limits<timestamp_t>::max()
-                     ? 0
-                     : 1);
+    ret.set_size(
+        nbr_list_[i].neighbor == std::numeric_limits<vid_t>::max() ? 0 : 1);
     if (ret.size() != 0) {
       ret.set_begin(&nbr_list_[i]);
     }
@@ -1350,10 +1683,8 @@ class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
 
   mut_slice_t get_edges_mut(vid_t i) {
     mut_slice_t ret;
-    ret.set_size(nbr_list_[i].timestamp.load() ==
-                         std::numeric_limits<timestamp_t>::max()
-                     ? 0
-                     : 1);
+    ret.set_size(
+        nbr_list_[i].neighbor == std::numeric_limits<vid_t>::max() ? 0 : 1);
     if (ret.size() != 0) {
       ret.set_begin(&nbr_list_[i]);
     }
@@ -1378,16 +1709,15 @@ class SingleMutableCsr : public TypedMutableCsrBase<EDATA_T> {
 
   std::shared_ptr<MutableCsrConstEdgeIterBase> edge_iter(
       vid_t v) const override {
-    return std::make_shared<TypedMutableCsrConstEdgeIter<EDATA_T>>(
-        get_edges(v));
+    return std::make_shared<TypedCsrConstEdgeIter<EDATA_T>>(get_edges(v));
   }
 
   MutableCsrConstEdgeIterBase* edge_iter_raw(vid_t v) const override {
-    return new TypedMutableCsrConstEdgeIter<EDATA_T>(get_edges(v));
+    return new TypedCsrConstEdgeIter<EDATA_T>(get_edges(v));
   }
 
   std::shared_ptr<MutableCsrEdgeIterBase> edge_iter_mut(vid_t v) override {
-    return std::make_shared<TypedMutableCsrEdgeIter<EDATA_T>>(get_edges_mut(v));
+    return std::make_shared<TypedCsrEdgeIter<EDATA_T>>(get_edges_mut(v));
   }
 
   void warmup(int thread_num) const override {
@@ -1434,9 +1764,9 @@ template <>
 class SingleMutableCsr<std::string_view>
     : public TypedMutableCsrBase<std::string_view> {
  public:
-  using nbr_t = MutableNbr<size_t>;
-  using slice_t = MutableNbrSlice<std::string_view>;
-  using mut_slice_t = MutableNbrSliceMut<std::string_view>;
+  using nbr_t = Nbr<size_t>;
+  using slice_t = NbrSlice<std::string_view>;
+  using mut_slice_t = NbrSliceMut<std::string_view>;
 
   SingleMutableCsr(StringColumn& column, std::atomic<size_t>& column_idx)
       : column_(column), column_idx_(column_idx) {}
@@ -1449,7 +1779,7 @@ class SingleMutableCsr<std::string_view>
     nbr_list_.open(work_dir + "/" + name + ".snbr", true);
     nbr_list_.resize(vnum);
     for (size_t k = 0; k != vnum; ++k) {
-      nbr_list_[k].timestamp.store(std::numeric_limits<timestamp_t>::max());
+      nbr_list_[k].neighbor = std::numeric_limits<vid_t>::max();
     }
     return vnum;
   }
@@ -1480,7 +1810,7 @@ class SingleMutableCsr<std::string_view>
       size_t old_size = nbr_list_.size();
       nbr_list_.resize(vnum);
       for (size_t k = old_size; k != vnum; ++k) {
-        nbr_list_[k].timestamp.store(std::numeric_limits<timestamp_t>::max());
+        nbr_list_[k].neighbor = std::numeric_limits<vid_t>::max();
       }
     } else {
       nbr_list_.resize(vnum);
@@ -1496,18 +1826,15 @@ class SingleMutableCsr<std::string_view>
 
   void put_edge(vid_t src, vid_t dst, size_t data, timestamp_t ts, Allocator&) {
     CHECK_LT(src, nbr_list_.size());
+    CHECK_EQ(nbr_list_[src].neighbor, std::numeric_limits<vid_t>::max());
     nbr_list_[src].neighbor = dst;
     nbr_list_[src].data = data;
-    CHECK_EQ(nbr_list_[src].timestamp, std::numeric_limits<timestamp_t>::max());
-    nbr_list_[src].timestamp.store(ts);
   }
 
-  slice_t get_edges(vid_t i) const override {
+  slice_t get_edges(vid_t i) const {
     slice_t ret(column_);
-    ret.set_size(nbr_list_[i].timestamp.load() ==
-                         std::numeric_limits<timestamp_t>::max()
-                     ? 0
-                     : 1);
+    ret.set_size(
+        nbr_list_[i].neighbor == std::numeric_limits<vid_t>::max() ? 0 : 1);
     if (ret.size() != 0) {
       ret.set_begin(&nbr_list_[i]);
     }
@@ -1516,19 +1843,16 @@ class SingleMutableCsr<std::string_view>
 
   mut_slice_t get_edges_mut(vid_t i) {
     mut_slice_t ret(column_);
-    ret.set_size(nbr_list_[i].timestamp.load() ==
-                         std::numeric_limits<timestamp_t>::max()
-                     ? 0
-                     : 1);
+    ret.set_size(
+        nbr_list_[i].neighbor == std::numeric_limits<vid_t>::max() ? 0 : 1);
     if (ret.size() != 0) {
       ret.set_begin(&nbr_list_[i]);
     }
     return ret;
   }
 
-  const MutableNbr<std::string_view>& get_edge(vid_t i) const {
+  const Nbr<std::string_view>& get_edge(vid_t i) const {
     nbr_.neighbor = nbr_list_[i].neighbor;
-    nbr_.timestamp.store(nbr_list_[i].timestamp.load());
     nbr_.data = column_.get_view(nbr_list_[i].data);
     return nbr_;
   }
@@ -1555,25 +1879,23 @@ class SingleMutableCsr<std::string_view>
 
   void batch_put_edge_with_index(vid_t src, vid_t dst, const size_t& data,
                                  timestamp_t ts = 0) override {
+    CHECK_EQ(nbr_list_[src].neighbor, std::numeric_limits<vid_t>::max());
     nbr_list_[src].neighbor = dst;
     nbr_list_[src].data = data;
-    CHECK_EQ(nbr_list_[src].timestamp.load(),
-             std::numeric_limits<timestamp_t>::max());
-    nbr_list_[src].timestamp.store(ts);
   }
 
   std::shared_ptr<MutableCsrConstEdgeIterBase> edge_iter(
       vid_t v) const override {
-    return std::make_shared<TypedMutableCsrConstEdgeIter<std::string_view>>(
+    return std::make_shared<TypedCsrConstEdgeIter<std::string_view>>(
         get_edges(v));
   }
 
   MutableCsrConstEdgeIterBase* edge_iter_raw(vid_t v) const override {
-    return new TypedMutableCsrConstEdgeIter<std::string_view>(get_edges(v));
+    return new TypedCsrConstEdgeIter<std::string_view>(get_edges(v));
   }
 
   std::shared_ptr<MutableCsrEdgeIterBase> edge_iter_mut(vid_t v) override {
-    return std::make_shared<TypedMutableCsrEdgeIter<std::string_view>>(
+    return std::make_shared<TypedCsrEdgeIter<std::string_view>>(
         get_edges_mut(v));
   }
 
@@ -1612,7 +1934,7 @@ class SingleMutableCsr<std::string_view>
   std::atomic<size_t>& column_idx_;
 
   mmap_array<nbr_t> nbr_list_;
-  mutable MutableNbr<std::string_view> nbr_;
+  mutable Nbr<std::string_view> nbr_;
 };
 
 template <typename EDATA_T>
@@ -1645,7 +1967,7 @@ class EmptyCsr : public TypedMutableCsrBase<EDATA_T> {
 
   size_t size() const override { return 0; }
 
-  slice_t get_edges(vid_t i) const override { return slice_t::empty(); }
+  slice_t get_edges(vid_t i) const { return slice_t::empty(); }
 
   void put_generic_edge(vid_t src, vid_t dst, const Any& data, timestamp_t ts,
                         Allocator&) override {}
@@ -1714,7 +2036,7 @@ class EmptyCsr<std::string_view>
 
   size_t size() const override { return 0; }
 
-  slice_t get_edges(vid_t i) const override { return slice_t::empty(column_); }
+  slice_t get_edges(vid_t i) const { return slice_t::empty(column_); }
 
   void put_generic_edge(vid_t src, vid_t dst, const Any& data, timestamp_t ts,
                         Allocator&) override {
