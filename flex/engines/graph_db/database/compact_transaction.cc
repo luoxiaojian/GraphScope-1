@@ -41,9 +41,9 @@ void CompactTransaction::Commit() {
     logger_.append(arc_.GetBuffer(), arc_.GetSize());
     arc_.Clear();
 
-    LOG(INFO) << "before compact - " << timestamp_;
+    VLOG(2) << "before compact - " << timestamp_;
     graph_.Compact(timestamp_);
-    LOG(INFO) << "after compact - " << timestamp_;
+    VLOG(2) << "after compact - " << timestamp_;
 
     vm_.release_update_timestamp(timestamp_);
     timestamp_ = std::numeric_limits<timestamp_t>::max();
