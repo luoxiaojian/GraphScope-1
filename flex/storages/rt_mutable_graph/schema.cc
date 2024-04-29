@@ -156,6 +156,12 @@ bool Schema::exist(const std::string& src_label, const std::string& dst_label,
   return eproperties_.find(index) != eproperties_.end();
 }
 
+bool Schema::exist(label_t src_label_i, label_t dst_label_i,
+                   label_t edge_label_i) const {
+  uint32_t index = generate_edge_label(src_label_i, dst_label_i, edge_label_i);
+  return eproperties_.find(index) != eproperties_.end();
+}
+
 const std::vector<PropertyType>& Schema::get_edge_properties(
     const std::string& src_label, const std::string& dst_label,
     const std::string& label) const {

@@ -35,3 +35,11 @@ include_directories(${Boost_INCLUDE_DIRS})
 add_executable(bulk_loader bulk_loader.cc)
 target_link_libraries(bulk_loader flex_rt_mutable_graph flex_utils ${GLOG_LIBRARIES} ${GFLAGS_LIBRARIES} ${Boost_LIBRARIES})
 install_without_export_flex_target(bulk_loader)
+
+add_executable(rt_test rt_test.cc)
+target_link_libraries(rt_test flex_utils flex_rt_mutable_graph flex_graph_db)
+install_without_export_flex_target(rt_test)
+
+add_executable(rt_test_pb rt_test_pb.cc)
+target_link_libraries(rt_test_pb flex_utils flex_rt_mutable_graph flex_graph_db)
+install_without_export_flex_target(rt_test_pb)

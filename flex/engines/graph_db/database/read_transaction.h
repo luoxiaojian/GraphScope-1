@@ -282,6 +282,11 @@ class ReadTransaction {
 
   timestamp_t timestamp() const;
 
+  const std::shared_ptr<ColumnBase> get_vertex_property_column(
+      uint8_t label, const std::string& col_name) const {
+    return graph_.get_vertex_table(label).get_column(col_name);
+  }
+
   void Commit();
 
   void Abort();
@@ -421,6 +426,8 @@ class ReadTransaction {
         graph_.get_ie_csr(v_label, neighbor_label, edge_label));
     return SingleImmutableGraphView<EDATA_T>(*csr);
   }
+
+  const MutablePropertyFragment& graph() const { return graph_; }
 
  private:
   void release();
